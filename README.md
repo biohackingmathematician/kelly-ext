@@ -12,7 +12,7 @@ The classical Kelly criterion maximizes expected log-growth but assumes known re
 
 1. Accounts for parameter estimation uncertainty via Wasserstein ambiguity sets
 2. Provides closed-form solutions for single-asset allocation
-3. Extends to multi-asset portfolios via tractable SDP formulations
+3. Extends to multi-asset portfolios via tractable SOCP formulations
 4. Calibrates ambiguity using conformal prediction with finite-sample guarantees
 
 ### Key Results
@@ -33,11 +33,13 @@ P(|μ̂ - μ| ≤ ε) ≥ 1 - α
 
 This is a distribution-free guarantee that holds for any continuous distribution.
 
-**Theorem 3 (Multi-Asset SDP):** The multi-asset DRK problem admits a tractable convex reformulation:
+**Theorem 3 (Multi-Asset SOCP):** The multi-asset DRK problem admits a tractable convex reformulation:
 
 ```
 max_f [f'(μ̂-r) - (1/2)f'Σ̂f - ε||f||₂]
 ```
+
+This is a Second-Order Cone Program (SOCP), solvable in polynomial time via standard solvers.
 
 ---
 
@@ -153,7 +155,7 @@ kelly-ext/
 │   │   └── preprocessing.py      # Data cleaning and transformations
 │   └── optimization/
 │       ├── single_asset.py       # Closed-form single-asset solutions
-│       ├── multi_asset.py        # Multi-asset SDP formulation
+│       ├── multi_asset.py        # Multi-asset SOCP formulation
 │       └── constraints.py        # Portfolio constraints
 ├── tests/
 │   └── test_kelly.py             # Comprehensive unit tests

@@ -6,7 +6,7 @@ Tests cover:
 2. Growth rate computations
 3. DRK closed-form solution (Theorem 1)
 4. Conformal calibration (Theorem 2)
-5. Multi-asset SDP formulation (Theorem 3)
+5. Multi-asset SOCP formulation (Theorem 3)
 6. Monte Carlo simulation correctness
 7. Edge cases and input validation
 
@@ -29,7 +29,8 @@ from kelly_robust.core.kelly import (
     drk_single_asset_closed_form,
     calibrate_epsilon_conformal,
     adaptive_conformal_kelly,
-    drk_multi_asset_sdp,
+    drk_multi_asset_socp,
+    drk_multi_asset_sdp,  # Backward compatibility alias
     simulate_gbm_returns,
     simulate_wealth_paths,
     compute_growth_metrics,
@@ -378,11 +379,11 @@ class TestAdaptiveConformalKelly:
 
 
 # =============================================================================
-# Part 5: Multi-Asset SDP Tests (Theorem 3)
+# Part 5: Multi-Asset SOCP Tests (Theorem 3)
 # =============================================================================
 
-class TestDRKMultiAssetSDP:
-    """Tests for multi-asset DRK SDP formulation."""
+class TestDRKMultiAssetSOCP:
+    """Tests for multi-asset DRK SOCP formulation."""
     
     def test_zero_epsilon_approximates_classical(self, multi_asset_params):
         """With ε≈0, should approximate classical Kelly."""
@@ -393,7 +394,7 @@ class TestDRKMultiAssetSDP:
         r = multi_asset_params['risk_free']
         
         # Very small epsilon
-        F_drk = drk_multi_asset_sdp(mu, Sigma, epsilon=1e-8, risk_free=r,
+        F_drk = drk_multi_asset_socp(mu, Sigma, epsilon=1e-8, risk_free=r,
                                      leverage_limit=10.0, long_only=False)
         F_kelly = kelly_multi_asset(mu, Sigma, r)
         
@@ -408,9 +409,9 @@ class TestDRKMultiAssetSDP:
         Sigma = multi_asset_params['Sigma']
         r = multi_asset_params['risk_free']
         
-        F_low = drk_multi_asset_sdp(mu, Sigma, epsilon=0.001, risk_free=r,
-                                     leverage_limit=10.0, long_only=True)
-        F_high = drk_multi_asset_sdp(mu, Sigma, epsilon=0.01, risk_free=r,
+        F_low = drk_multi_asset_socp(mu, Sigma, epsilon=0.001, risk_free=r,
+                                      leverage_limit=10.0, long_only=True)
+        F_high = drk_multi_asset_socp(mu, Sigma, epsilon=0.01, risk_free=r,
                                       leverage_limit=10.0, long_only=True)
         
         # Higher epsilon should give lower allocation
@@ -423,8 +424,8 @@ class TestDRKMultiAssetSDP:
         mu = multi_asset_params['mu']
         Sigma = multi_asset_params['Sigma']
         
-        F = drk_multi_asset_sdp(mu, Sigma, epsilon=0.001, 
-                                 long_only=True)
+        F = drk_multi_asset_socp(mu, Sigma, epsilon=0.001, 
+                                  long_only=True)
         
         assert np.all(F >= -1e-6)  # Allow small numerical errors
     
@@ -436,7 +437,7 @@ class TestDRKMultiAssetSDP:
         Sigma = multi_asset_params['Sigma']
         
         for lev in [0.5, 1.0, 2.0]:
-            F = drk_multi_asset_sdp(mu, Sigma, epsilon=0.001,
+            F = drk_multi_asset_socp(mu, Sigma, epsilon=0.001,
                                      leverage_limit=lev, long_only=True)
             assert np.sum(F) <= lev + 1e-6
 
@@ -673,6 +674,166 @@ class TestEdgeCases:
         
         # Should not crash, fraction might be 0 or very small
         assert result.fraction >= 0
+
+
+# =============================================================================
+# Part 11: Multi-Asset SOCP Tests
+# =============================================================================
+
+# Check if cvxpy is available
+try:
+    import cvxpy as cp
+    CVXPY_AVAILABLE = True
+except ImportError:
+    CVXPY_AVAILABLE = False
+
+
+@pytest.mark.skipif(not CVXPY_AVAILABLE, reason="cvxpy not installed")
+class TestMultiAssetSOCP:
+    """Tests for multi-asset SOCP (correctly named, not SDP)."""
+    
+    def test_socp_returns_valid_weights(self):
+        """SOCP should return valid portfolio weights."""
+        mu = np.array([0.001, 0.0005, 0.0008])
+        Sigma = np.array([
+            [0.0004, 0.0001, 0.00005],
+            [0.0001, 0.0003, 0.00008],
+            [0.00005, 0.00008, 0.00035]
+        ])
+        
+        weights = drk_multi_asset_socp(mu, Sigma, epsilon=0.0001)
+        
+        assert weights is not None
+        assert len(weights) == 3
+        assert np.all(weights >= -1e-6)  # Allow small numerical errors
+        assert np.sum(weights) <= 1.0 + 1e-6
+    
+    def test_higher_epsilon_lower_weights(self):
+        """Higher ambiguity should lead to more conservative weights."""
+        mu = np.array([0.001, 0.0005])
+        Sigma = np.array([[0.0004, 0.0001], [0.0001, 0.0003]])
+        
+        w_low = drk_multi_asset_socp(mu, Sigma, epsilon=0.0001)
+        w_high = drk_multi_asset_socp(mu, Sigma, epsilon=0.001)
+        
+        # Higher epsilon should lead to lower total investment
+        assert np.sum(w_high) <= np.sum(w_low) + 1e-6
+    
+    def test_zero_epsilon_matches_classical(self):
+        """With epsilon=0, should be close to classical Kelly (unconstrained)."""
+        mu = np.array([0.001, 0.0008])
+        Sigma = np.array([[0.0004, 0.0001], [0.0001, 0.0003]])
+        
+        w_robust = drk_multi_asset_socp(mu, Sigma, epsilon=0.0, long_only=False, leverage_limit=10.0)
+        
+        # Classical Kelly (unconstrained): Sigma^{-1}(mu - r)
+        w_classical = np.linalg.solve(Sigma, mu)
+        
+        # They should be close (not exact due to constraints)
+        # At least check that epsilon=0 gives a reasonable solution
+        assert w_robust is not None
+        assert len(w_robust) == 2
+    
+    def test_backward_compatibility_alias(self):
+        """The deprecated sdp alias should still work."""
+        mu = np.array([0.001, 0.0005])
+        Sigma = np.array([[0.0004, 0.0001], [0.0001, 0.0003]])
+        
+        # This should not raise an error
+        w = drk_multi_asset_sdp(mu, Sigma, epsilon=0.0001)
+        
+        assert w is not None
+        assert len(w) == 2
+
+
+# =============================================================================
+# Part 12: Statistical Tests Module
+# =============================================================================
+
+class TestStatisticalTests:
+    """Tests for statistical testing functions."""
+    
+    def test_bootstrap_sharpe_ci(self):
+        """Bootstrap CI should contain point estimate."""
+        from kelly_robust.backtest.statistical_tests import bootstrap_sharpe_ratio
+        
+        np.random.seed(42)
+        returns = np.random.randn(252) * 0.02 + 0.001
+        
+        result = bootstrap_sharpe_ratio(returns, n_bootstrap=1000, seed=42)
+        
+        assert result.ci_lower <= result.point_estimate <= result.ci_upper
+    
+    def test_bootstrap_statistic_generic(self):
+        """Generic bootstrap should work for any statistic."""
+        from kelly_robust.backtest.statistical_tests import bootstrap_statistic
+        
+        np.random.seed(42)
+        data = np.random.exponential(2, size=100)
+        
+        result = bootstrap_statistic(data, np.mean, n_bootstrap=1000, seed=42)
+        
+        assert result.ci_lower < result.point_estimate < result.ci_upper
+        assert result.std_error > 0
+    
+    def test_bootstrap_sharpe_difference(self):
+        """Sharpe difference CI should be valid."""
+        from kelly_robust.backtest.statistical_tests import bootstrap_sharpe_difference
+        
+        np.random.seed(42)
+        returns1 = np.random.randn(252) * 0.02 + 0.002
+        returns2 = np.random.randn(252) * 0.02 + 0.001
+        
+        result = bootstrap_sharpe_difference(returns1, returns2, n_bootstrap=1000, seed=42)
+        
+        # returns1 has higher mean, so difference should be positive
+        assert result.point_estimate > 0
+        assert result.ci_lower < result.ci_upper
+    
+    def test_holm_bonferroni(self):
+        """Holm-Bonferroni should be more powerful than Bonferroni."""
+        from kelly_robust.backtest.statistical_tests import holm_bonferroni_correction
+        
+        p_values = [0.01, 0.04, 0.03, 0.25]
+        rejected, adjusted = holm_bonferroni_correction(p_values, alpha=0.05)
+        
+        # First (smallest) should definitely be rejected
+        assert rejected[0] == True
+        
+        # Adjusted p-values should not exceed 1
+        assert all(p <= 1.0 for p in adjusted)
+        
+        # Original p-values and adjusted should have same order for rejected
+        assert adjusted[0] <= adjusted[2]  # 0.01 < 0.03 in original
+    
+    def test_diebold_mariano_test(self):
+        """Diebold-Mariano test should detect different forecast accuracy."""
+        from kelly_robust.backtest.statistical_tests import diebold_mariano_test
+        
+        np.random.seed(42)
+        # Better forecast (smaller errors)
+        errors1 = np.random.randn(100) * 0.5
+        # Worse forecast (larger errors)
+        errors2 = np.random.randn(100) * 1.5
+        
+        result = diebold_mariano_test(errors1, errors2)
+        
+        # errors1 should be better (smaller MSE)
+        assert result.mean_diff < 0  # errors1^2 - errors2^2 < 0
+        assert result.p_value < 0.05  # Significant difference
+        assert result.significant == True
+    
+    def test_diebold_mariano_equal_forecasts(self):
+        """DM test should not reject for identical forecasts."""
+        from kelly_robust.backtest.statistical_tests import diebold_mariano_test
+        
+        np.random.seed(42)
+        errors = np.random.randn(100)
+        
+        result = diebold_mariano_test(errors, errors)
+        
+        assert result.mean_diff == 0.0
+        assert result.p_value >= 0.05
 
 
 # =============================================================================

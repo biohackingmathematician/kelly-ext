@@ -33,7 +33,8 @@ from .core.kelly import (
     drk_single_asset_closed_form,
     calibrate_epsilon_conformal,
     adaptive_conformal_kelly,
-    drk_multi_asset_sdp,
+    drk_multi_asset_socp,
+    drk_multi_asset_sdp,  # Deprecated alias
     simulate_gbm_returns,
     simulate_wealth_paths,
     compute_growth_metrics,
@@ -53,7 +54,8 @@ __all__ = [
     'drk_single_asset_closed_form',
     'calibrate_epsilon_conformal',
     'adaptive_conformal_kelly',
-    'drk_multi_asset_sdp',
+    'drk_multi_asset_socp',
+    'drk_multi_asset_sdp',  # Deprecated alias
     'simulate_gbm_returns',
     'simulate_wealth_paths',
     'compute_growth_metrics',

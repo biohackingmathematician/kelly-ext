@@ -1,7 +1,15 @@
 """
-Multi-Asset Kelly Optimization.
+Multi-Asset Portfolio Optimization for DRK.
 
-SDP formulation for multi-asset DRK and related methods.
+NOTE: The robust Kelly problem with Wasserstein ambiguity is a 
+Second-Order Cone Program (SOCP), NOT a Semidefinite Program (SDP).
+
+The distinction matters because:
+- SOCP: O(d^2) variables, O(d^3) per iteration
+- SDP: O(d^2) variables but larger constraint matrices
+
+The epsilon||f||_2 penalty term creates a second-order cone constraint,
+not a linear matrix inequality (LMI).
 
 Author: Agna Chan
 Date: December 2025
@@ -42,7 +50,7 @@ def kelly_multi_asset(
     return np.linalg.solve(Sigma, excess)
 
 
-def drk_multi_asset_sdp(
+def drk_multi_asset_socp(
     mu_hat: np.ndarray,
     Sigma_hat: np.ndarray,
     epsilon: float,
@@ -52,13 +60,14 @@ def drk_multi_asset_sdp(
     max_position: Optional[float] = None,
 ) -> np.ndarray:
     """
-    Multi-asset DRK via semidefinite programming.
+    Multi-asset DRK via Second-Order Cone Programming (SOCP).
     
     Solves:
-        max_f  f'(μ̂-r) - (1/2)f'Σ̂f - ε||f||_2
+        max_f  f'(mu_hat-r) - (1/2)f'Sigma_hat*f - epsilon||f||_2
     
     This is the worst-case growth rate over the Wasserstein
-    ambiguity set.
+    ambiguity set. The epsilon||f||_2 term creates a second-order
+    cone constraint, making this an SOCP (not SDP).
     
     Parameters
     ----------
@@ -115,21 +124,25 @@ def drk_multi_asset_sdp(
     problem = cp.Problem(cp.Maximize(growth_wc), constraints)
     
     try:
-        # Try MOSEK first (best for SDP)
+        # Try MOSEK first (best for SOCP)
         problem.solve(solver=cp.MOSEK, verbose=False)
     except (cp.error.SolverError, Exception):
         try:
-            # Fall back to SCS
-            problem.solve(solver=cp.SCS, verbose=False)
-        except (cp.error.SolverError, Exception):
-            # Last resort: ECOS
+            # Fall back to ECOS (good for SOCP)
             problem.solve(solver=cp.ECOS, verbose=False)
+        except (cp.error.SolverError, Exception):
+            # Last resort: SCS
+            problem.solve(solver=cp.SCS, verbose=False)
     
     if problem.status not in ['optimal', 'optimal_inaccurate']:
         warnings.warn(f"Optimization status: {problem.status}")
         return np.zeros(d)
     
     return f.value
+
+
+# Backward compatibility alias (deprecated)
+drk_multi_asset_sdp = drk_multi_asset_socp
 
 
 def mean_variance_kelly(

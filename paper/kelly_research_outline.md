@@ -188,21 +188,27 @@ $$
 
 #### 4.2 Tractable Reformulation
 
-**Theorem 3 (Multi-Asset DRK):**  
-The multi-asset DRK problem:
+**Theorem 3 (Multi-Asset DRK - SOCP Reformulation):**  
+The multi-asset DRK problem under mean-only Wasserstein ambiguity:
 $$
-\max_{\mathbf{f}} \min_{(\mathbf{m}, \mathbf{S}) \in \mathcal{A}_\varepsilon} \left[ r + \mathbf{f}^\top(\mathbf{m} - r\mathbf{1}) - \frac{1}{2}\mathbf{f}^\top \mathbf{S} \mathbf{f} \right]
-$$
-
-is equivalent to the **semidefinite program** (SDP):
-$$
-\max_{\mathbf{f}, t} \quad t
-$$
-$$
-\text{s.t.} \quad \begin{pmatrix} \hat{\boldsymbol{\Sigma}} + t\mathbf{I} & \mathbf{f} \\ \mathbf{f}^\top & 2(\mathbf{f}^\top(\hat{\boldsymbol{\mu}} - r\mathbf{1}) - t - \varepsilon\|\mathbf{f}\|_2) \end{pmatrix} \succeq 0
+\max_{\mathbf{f}} \min_{\mathbf{m}: \|\mathbf{m} - \hat{\boldsymbol{\mu}}\|_2 \leq \varepsilon} \left[ r + \mathbf{f}^\top(\mathbf{m} - r\mathbf{1}) - \frac{1}{2}\mathbf{f}^\top \hat{\boldsymbol{\Sigma}} \mathbf{f} \right]
 $$
 
-This is computationally tractable using standard SDP solvers (CVXPY, MOSEK).
+is equivalent to the **Second-Order Cone Program (SOCP)**:
+$$
+\max_{\mathbf{f}} \quad \mathbf{f}^\top(\hat{\boldsymbol{\mu}} - r\mathbf{1}) - \frac{1}{2}\mathbf{f}^\top \hat{\boldsymbol{\Sigma}} \mathbf{f} - \varepsilon \|\mathbf{f}\|_2
+$$
+$$
+\text{s.t.} \quad \mathbf{1}^\top \mathbf{f} \leq 1, \quad \mathbf{f} \geq \mathbf{0}
+$$
+
+**Proof:** The inner minimization over $\mathbf{m}$ is:
+$$
+\min_{\|\mathbf{m} - \hat{\boldsymbol{\mu}}\|_2 \leq \varepsilon} \mathbf{f}^\top \mathbf{m} = \mathbf{f}^\top \hat{\boldsymbol{\mu}} - \varepsilon \|\mathbf{f}\|_2
+$$
+by Cauchy-Schwarz. The worst-case mean is $\mathbf{m}^* = \hat{\boldsymbol{\mu}} - \varepsilon \mathbf{f}/\|\mathbf{f}\|_2$. Substituting yields the SOCP. $\square$
+
+This is computationally tractable using standard SOCP solvers (CVXPY with ECOS, MOSEK, or SCS).
 
 ---
 
@@ -237,7 +243,7 @@ kelly_robust/
 │   │   └── bayesian.py             # Bayesian posterior
 │   ├── optimization/
 │   │   ├── single_asset.py         # Closed-form solutions
-│   │   ├── multi_asset_sdp.py      # SDP formulation
+│   │   ├── multi_asset.py          # SOCP formulation
 │   │   └── constraints.py          # Leverage, long-only
 │   ├── simulation/
 │   │   ├── monte_carlo.py          # MC simulation engine
@@ -292,7 +298,7 @@ kelly_robust/
 
 #### 6.3 Experiment 3: Multi-Asset Setting
 
-**Objective:** Validate SDP formulation scales correctly
+**Objective:** Validate SOCP formulation scales correctly
 
 **Setup:**
 - Universe: 5, 10, 25, 50 assets
@@ -346,7 +352,7 @@ kelly_robust/
 
 1. **Theoretical:** First rigorous derivation of robust Kelly under Wasserstein ambiguity
 2. **Methodological:** Conformal prediction for ambiguity calibration (new application)
-3. **Computational:** Tractable SDP formulation for multi-asset DRK
+3. **Computational:** Tractable SOCP formulation for multi-asset DRK
 4. **Empirical:** Comprehensive comparison on realistic data with statistical rigor
 
 ### 9. Connection to Literature
@@ -439,7 +445,7 @@ def drk_single_asset(
     return f_drk
 ```
 
-#### 10.2 Multi-Asset DRK (SDP)
+#### 10.2 Multi-Asset DRK (SOCP)
 
 ```python
 import cvxpy as cp
@@ -603,3 +609,4 @@ This completes the proof. $\square$
 - Simulation Experiment 2: ~4 hours (CPU)
 - Simulation Experiment 3: ~8 hours (GPU recommended)
 - Empirical backtests: ~30 minutes (CPU)
+

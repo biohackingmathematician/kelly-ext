@@ -23,6 +23,16 @@ from .performance import (
     compute_drawdown_series,
     statistical_tests,
 )
+from .statistical_tests import (
+    bootstrap_statistic,
+    bootstrap_sharpe_ratio,
+    bootstrap_sharpe_difference,
+    diebold_mariano_test,
+    holm_bonferroni_correction,
+    compare_strategies,
+    BootstrapResult,
+    DieboldMarianoResult,
+)
 
 __all__ = [
     # Walk-forward
@@ -38,5 +48,14 @@ __all__ = [
     'compute_performance_metrics',
     'compute_drawdown_series',
     'statistical_tests',
+    # Statistical tests
+    'bootstrap_statistic',
+    'bootstrap_sharpe_ratio',
+    'bootstrap_sharpe_difference',
+    'diebold_mariano_test',
+    'holm_bonferroni_correction',
+    'compare_strategies',
+    'BootstrapResult',
+    'DieboldMarianoResult',
 ]
 

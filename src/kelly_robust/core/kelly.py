@@ -321,7 +321,7 @@ def adaptive_conformal_kelly(
 # Part 4: Multi-Asset DRK (Requires CVXPY)
 # =============================================================================
 
-def drk_multi_asset_sdp(
+def drk_multi_asset_socp(
     mu_hat: np.ndarray,
     Sigma_hat: np.ndarray,
     epsilon: float,
@@ -330,12 +330,16 @@ def drk_multi_asset_sdp(
     long_only: bool = True
 ) -> np.ndarray:
     """
-    Multi-asset DRK via semidefinite programming.
+    Multi-asset DRK via Second-Order Cone Programming (SOCP).
     
-    Solves:
-        max_f min_{Q ∈ A_ε} g(f; Q)
+    Solves the distributionally robust Kelly problem:
+        max_f min_{Q in A_eps} g(f; Q)
     
-    where A_ε is the Wasserstein ambiguity set.
+    Under mean-only Wasserstein ambiguity, this simplifies to:
+        max_f [f'(mu_hat-r) - (1/2)f'Sigma_hat*f - eps||f||_2]
+    
+    This is a convex SOCP (not SDP as sometimes incorrectly stated).
+    The eps||f||_2 term is a second-order cone constraint.
     
     Parameters
     ----------
@@ -344,11 +348,11 @@ def drk_multi_asset_sdp(
     Sigma_hat : np.ndarray
         Estimated covariance matrix (d, d)
     epsilon : float
-        Ambiguity radius
+        Ambiguity radius (Wasserstein ball size)
     risk_free : float
         Risk-free rate
     leverage_limit : float
-        Maximum sum of weights
+        Maximum sum of weights (1.0 = no leverage)
     long_only : bool
         Whether to enforce non-negative weights
         
@@ -356,23 +360,39 @@ def drk_multi_asset_sdp(
     -------
     np.ndarray
         Robust portfolio weights (d,)
+        
+    Notes
+    -----
+    The problem structure:
+    - Objective: concave quadratic + linear + cone term
+    - Constraints: linear (leverage, long-only)
+    - Complexity: O(d^3) per iteration, polynomial overall
+    
+    References
+    ----------
+    - Blanchet & Murthy (2019), Math. Oper. Res.
+    - Boyd & Vandenberghe (2004), Convex Optimization, Ch. 4.4
     """
     try:
         import cvxpy as cp
     except ImportError:
-        raise ImportError("cvxpy required for multi-asset DRK. Install via: pip install cvxpy")
+        raise ImportError("cvxpy required. Install via: pip install cvxpy")
     
     d = len(mu_hat)
     
     # Decision variables
     f = cp.Variable(d)
     
-    # Excess returns
+    # Excess returns vector
     excess = mu_hat - risk_free * np.ones(d)
     
-    # Worst-case growth rate:
-    # g_wc(f) = f'(μ - r) - (1/2)f'Σf - ε||f||_2
-    growth_wc = f @ excess - 0.5 * cp.quad_form(f, Sigma_hat) - epsilon * cp.norm(f, 2)
+    # Objective: maximize worst-case growth rate
+    # g_wc(f) = f'(mu-r) - (1/2)f'Sigma*f - eps||f||_2
+    expected_excess = f @ excess
+    variance_penalty = 0.5 * cp.quad_form(f, Sigma_hat)
+    ambiguity_penalty = epsilon * cp.norm(f, 2)  # This is the SOCP part
+    
+    objective = expected_excess - variance_penalty - ambiguity_penalty
     
     # Constraints
     constraints = [cp.sum(f) <= leverage_limit]
@@ -380,19 +400,28 @@ def drk_multi_asset_sdp(
         constraints.append(f >= 0)
     
     # Solve
-    problem = cp.Problem(cp.Maximize(growth_wc), constraints)
+    problem = cp.Problem(cp.Maximize(objective), constraints)
     
-    try:
-        problem.solve(solver=cp.MOSEK, verbose=False)
-    except cp.error.SolverError:
-        # Fallback to open-source solver
-        problem.solve(solver=cp.SCS, verbose=False)
+    # Try MOSEK first (fastest), fall back to ECOS or SCS
+    solvers_to_try = [cp.MOSEK, cp.ECOS, cp.SCS]
+    
+    for solver in solvers_to_try:
+        try:
+            problem.solve(solver=solver, verbose=False)
+            if problem.status in ['optimal', 'optimal_inaccurate']:
+                break
+        except (cp.error.SolverError, Exception):
+            continue
     
     if problem.status not in ['optimal', 'optimal_inaccurate']:
-        warnings.warn(f"Optimization status: {problem.status}")
-        return np.zeros(d)
+        warnings.warn(f"Optimization status: {problem.status}. Returning equal weights.")
+        return np.ones(d) / d
     
     return f.value
+
+
+# Backward compatibility alias (deprecated)
+drk_multi_asset_sdp = drk_multi_asset_socp
 
 
 # =============================================================================

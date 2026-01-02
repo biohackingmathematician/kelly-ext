@@ -17,7 +17,7 @@ The ambiguity radius ε is calibrated via conformal prediction to achieve finite
 
 1. **Theorem 1:** Closed-form DRK solution under Gaussian returns with 2-Wasserstein ambiguity
 2. **Theorem 2:** Conformal calibration achieves P(|μ̂ - μ| ≤ ε) ≥ 1-α
-3. **Theorem 3:** Multi-asset DRK reformulates as a tractable SDP
+3. **Theorem 3:** Multi-asset DRK reformulates as a tractable SOCP
 
 ## Key Formulas
 
@@ -30,7 +30,7 @@ Conformal quantile: `q = ceil((1-α)(n+1))/n`
 ## Dependencies
 
 Core: numpy, scipy, pandas, cvxpy  
-Optional: mapie (conformal), yfinance (data), mosek (SDP solver)
+Optional: mapie (conformal), yfinance (data), mosek (SOCP solver)
 
 ## Running Tests
 

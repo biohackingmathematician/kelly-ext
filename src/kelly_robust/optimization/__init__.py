@@ -3,7 +3,7 @@ Optimization module for Kelly portfolio construction.
 
 Provides:
 - Single-asset closed-form solutions
-- Multi-asset SDP formulation
+- Multi-asset SOCP formulation
 - Constraint handling (leverage, long-only, sector)
 """
 
@@ -14,7 +14,8 @@ from .single_asset import (
 )
 from .multi_asset import (
     kelly_multi_asset,
-    drk_multi_asset_sdp,
+    drk_multi_asset_socp,
+    drk_multi_asset_sdp,  # Deprecated alias
     mean_variance_kelly,
 )
 from .constraints import (
